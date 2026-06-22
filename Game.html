@@ -1,0 +1,536 @@
+<!DOCTYPE html>
+<html lang="en">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+        <title>Solar System Game</title>
+        <style>
+            @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&display=swap');
+            :root {
+                --neon-cyan: #00ffcc;
+                --neon-red: #ff3366;
+                --neon-orange: #ff5500;
+                --bg-dark: #020205;
+            }
+
+            * {
+                box-sizing: border-box;
+                user-select: none;
+                -webkit-user-select: none;
+                touch-action: none;
+            }
+            body {
+                margin: 0;
+                padding: 0;
+                background: var(--bg-dark);
+                color: #f0f0f3;
+                font-family: 'JetBrains Mono', monospace;
+                width: 100vw;
+                height: 100vh;
+                overflow: hidden;
+                position: fixed;
+            }
+            #hud-container {
+                position: absolute;
+                top: 0;
+                left: 0;
+                width: 100%;
+                padding: 20px 40px;
+                display: flex;
+                justify-content: space-between;
+                background: linear-gradient(to bottom, rgba(2, 2, 5, 0.9), transparent);
+                pointer-events: none;
+                z-index: 10;
+            }
+            @media (max-width: 600px) {
+                #hud-container {
+                    padding: 15px;
+                    font-size: 14px;
+                }
+            }
+            .hud-group {
+                display: flex;
+                gap: 20px;
+            }
+            .stat-box {
+                background: rgba(255, 255, 255, 0.1);
+                padding: 8px 16px;
+                border: 1px solid rgba(255, 255, 255, 0.08);
+                border-radius: 6px;
+                backdrop-filter: blur(4px);
+                font-size: 12px;
+                letter-spacing: 1px;
+                text-transform: uppercase;
+                box-shadow: 0 4px 15px rgba(0, 0, 0, 0.5);
+            }
+            .stat-value {
+                font-size: 16px;
+                font-weight: 700;
+                display: block;
+                margin-top: 4px;
+            }
+            .glow-text {
+                color: var(--neon-cyan);
+                text-shadow: 0 0 10px rgba(0, 255, 204, 0.6);
+            }
+            .alert-text {
+                color: var(--neon-red);
+                text-shadow: 0 0 10px rgba(255, 51, 102, 0.6);
+            }
+            canvas {
+                display: block;
+                width: 100%;
+                height: 100%;
+                z-index: 1;
+            }
+            #scanlines {
+                position: absolute;
+                top: 0;
+                left: 0;
+                width: 100%;
+                height: 100%;
+                background: linear-gradient(rgba(18, 16, 16, 0)50%, rgba(0, 0, 0, 0.25)50%), linear-gradient(90deg, rgba(255, 0, 0, 0.06), rgba(0, 255, 0, 0.02), rgba(0, 0, 255, 0.06));
+                background-size: 100% 4px, 4px 100%;
+                pointer-events: none;
+                z-index: 5;
+                opacity: 0.4;
+            }
+        </style>
+    </head>
+    <body>
+        <div id="hud-container">
+            <div class="hud-group">
+                <div class="stat-box">ROUND<span id="round" class="stat-value alert-text">01</span></div>
+                <div class="stat-box">Lives<span id="lives" class="stat-value alert-text">05</span></div>
+            </div>
+            <div class="hud-group">
+                <div class="stat-box">SCORE<span id="score" class="stat-value glow-text">000</span></div>
+                <div class="stat-box" style="text-align: right;">TARGET<span id="target" class="stat-value glow-text">000</span>
+                </div>
+            </div>
+        </div>
+            <div id="scanlines"></div>
+            <canvas id="gameCanvas"></canvas>
+        <script>
+            const canvas = document.getElementById("gameCanvas");
+            const ctx = canvas.getContext("2d", { alpha: false});
+            let center = { x: 0, y: 0};
+            let scale = 1;
+            let dpr = window.devicePixelRatio || 1;
+            function resize() {
+                canvas.width = window.innerWidth * dpr;
+                canvas.height = window.innerHeight * dpr;
+                ctx.scale(dpr, dpr);
+                center = { x: window.innerWidth / 2, y: window.innerHeight / 2};
+                scale = Math.min(window.innerWidth, window.innerHeight) / 800;
+            }
+            window.addEventListener('resize', resize);
+            let gameState = "Tutorial";
+            let score = 0, round = 1, lives = 5;
+            let speedMultiplier = 1.0;
+            let particles = [], meteors = [];
+            let screenShake = 0, meteorSpawnTimer = 0;
+            const stars = Array.from({ length: 150}, () => ({
+                x: Math.random(), y: Math.random(),
+                size: Math.random() * 1.5 * dpr,
+                alpha: Math.random() * 0.7 + 0.1,
+                speed: Math.random() * 0.05
+            }));
+            const player = {
+                x: 0, y: 0, vx: 0, vy: 0, speed: 0.6, friction: 0.92, radius: 8, angle: 0,
+                invincibleTimer : 0,
+                trail: []
+            };
+            const planets = [
+                {name: "Mercury", baseDist: 80, speed: 0.025, radius: 5, color: "#a9a9a9"},
+                {name: "Venus", baseDist: 140, speed: 0.018, radius: 8, color: "#e6994d"},
+                {name: "Earth", baseDist: 210, speed: 0.014, radius: 10, color: "#2b82c9"},
+                {name: "Mars", baseDist: 280, speed: 0.010, radius: 7, color: "#c94c2b"},
+                {name: "Jupiter", baseDist: 360, speed: 0.006, radius: 16, color: "#b8860b"},
+            ]. map (p => ({...p, angle: Math.random() * Math.PI * 2, x: 0, y: 0}));
+            let targetIndex = 2;
+            const keys = {};
+            let pointer = { active: false, x: 0, y: 0};
+            window.addEventListener("keydown", e => {keys[e.key.toLowerCase()]= true; if (e.key === " " || e.key === "Enter") handleProgression()
+            });
+            window.addEventListener("keyup", e => keys[e.key.toLowerCase()] = false);
+            window.addEventListener("pointerdown", e => {pointer.active = true; pointer.x = e.clientX; pointer.y = e.clientY});
+            window.addEventListener("pointermove", e => {if (pointer.active) {pointer.x = e.clientX;
+                pointer.y = e.clientY;}
+            });
+            window.addEventListener("pointerup", () => pointer.active = false);
+            function handleProgression() {
+                if (gameState === "Tutorial") {
+                    gameState = "Playing";
+                    initPlayerPosition();
+                    updateHUD();
+                } else if (gameState === "GameOver" || gameState === "Win!") {
+                    resetGame();
+                }
+            }
+            function initPlayerPosition() {
+                player.x = center.x;
+                player.y = center.y - (260 * scale);
+                player.vx = 0; player.vy = 0;
+                player.trail = [];
+            }
+            function resetGame() {
+                score = 0; 
+                round = 1; 
+                lives = 5; 
+                speedMultiplier = 1.0; 
+                particles = []; 
+                meteors = []; 
+                screenShake = 0; 
+                targetIndex = Math.floor(Math.random()* planets.length);
+                initPlayerPosition();
+                gameState = "Playing";
+                updateHUD();
+            }
+            function updateHUD() {
+                document.getElementById("score").innerText = String(score).padStart(3, '0');
+                document.getElementById("round").innerText = String(round).padStart(2, '0');
+                document.getElementById("lives").innerText = String(lives).padStart(2, '0');
+                document.getElementById("target").innerText = planets[targetIndex].name;
+            }
+            function createExplosion(x, y, color, count = 25){
+                for (let i = 0; i < count; i++){
+                    particles.push({
+                        x, y,
+                        vx: (Math.random() - 0.5) * 8 * scale,
+                        vy: (Math.random() - 0.5)* 8 * scale,
+                        radius: (Math.random() * 3 + 1)* scale, color, alpha: 1,
+                        decay: Math.random()* 0.02 + 0.015
+                    });
+                }
+            }
+            function spawnMeteor() {
+                meteorSpawnTimer++;
+                const spawnInterval = Math.max(15, 60 - round * 3)
+                if (meteorSpawnTimer >= spawnInterval) {
+                    meteorSpawnTimer = 0;
+                    let x, y;
+                    const buffer = 50
+                    if (Math.random() < 0.5) {
+                        x = Math.random() < 0.5 ?-buffer: window.innerWidth + buffer;
+                        y = Math.random() * window.innerHeight;
+                    } else {
+                        x = Math.random() * window.innerWidth;
+                        y = Math.random() < 0.5 ? -buffer : window.innerHeight + buffer;
+                    }
+                    const targetX = center.x + (Math.random() - 0.5) * (window.innerWidth * 0.6);
+                    const targetY = center.y + (Math.random() - 0.5) * (window.innerHeight * 0.6);
+                    const angle = Math.atan2(targetY - y, targetX - x);
+                    const speedMod = (Math.random() *1.5 + 2.0) * (1.0 + (round * 0.08)) *scale;
+                    const radius = (Math.random() * 6 + 5)* scale;
+                    const vertices = [];
+                    const points = Math.floor(Math.random() * 4) + 6;
+                    for (let i=0; i<points; i++) {
+                        vertices.push((Math.random()* 0.4 + 0.8)* radius);
+                    }
+                    meteors.push({ x, y, vx: Math.cos(angle)* speedMod, vy: Math.sin(angle)* speedMod, radius, vertices, angle: 0, rotSpeed: (Math.random() - 0.5) * 0.1});
+                }
+            }
+            function update() {
+                if (gameState === "Tutorial") {
+                    planets.forEach(p => p.angle += p.speed * 0.2);
+                    return
+                }
+                if (gameState !== "Playing") return;
+                if (lives <= 0) {
+                    gameState = "GameOver";
+                    return;
+                }
+                if (screenShake > 0) screenShake -= 0.2;
+                if (player.invincibleTimer > 0)
+                player.invincibleTimer --;
+            let ax = 0, ay =0;
+            if (keys ["arrowup"] || keys["w"]) ay -= player.speed * scale;
+            if (keys ["arrowdown"] || keys["s"]) ay += player.speed * scale;
+            if (keys ["arrowleft"] || keys["a"]) ax -= player.speed * scale;
+            if (keys ["arrowright"] || keys ["d"]) ax += player.speed * scale;   
+            if (pointer.active) {
+                let dx = pointer.x - player.x;
+                let dy = pointer.y - player.y;
+                let dist = Math.hypot(dx, dy);
+                if (dist > 10 * scale) {
+                    ax += (dx / dist) * player.speed * scale * 1.2;
+                    ay += (dy / dist ) * player.speed * scale * 1.2;
+                }
+            }
+            player.vx += ax;
+            player.vy += ay;
+            player.vx *= player.friction;
+            player.vy *= player.friction;
+            player.x += player.vx; player.y += player.vy;
+            if (Math.abs(player.vx) > 0.1 || Math.abs(player.vy) > 0.1) {
+                player.angle = Math.atan2(player.vy, player.vx);
+            }
+            player.trail.push({x: player.x, y: player.y});
+            if (player.trail.length > 10)player.trail.shift();
+            player.x = Math.max(player.radius * scale, Math.min(window.innerWidth - player.radius * scale, player.x));
+            player.y = Math.max(player.radius * scale, Math.min(window. innerHeight - player.radius * scale, player.y));
+            
+        spawnMeteor();
+        for (let i = meteors.length - 1; i >= 0; i--) {
+            let m = meteors[i];
+            m.x += m.vx;
+            m.y += m.vy;
+            m.angle += m.rotSpeed;
+            if(Math.random() < 0.3) {
+                particles.push({
+                    x: m.x - m.vx, y: m.y - m.vy,
+                    vx: m.vx * -0.2, vy: m.vy * -0.2,
+                    radius: Math.random() * 2 + 1,
+                    color: "#ff5500", alpha: 0.6, decay: 0.05
+                });
+            }
+            if (m.x < -100 || m.x > window.innerWidth + 100 || m.y < -100 || m.y > window.innerHeight + 100) {
+                meteors.splice(i, 1);
+                continue;
+            }
+            let dist = Math.hypot(player.x - m.x, player.y - m.y);
+            if (dist < (player.radius * scale) + m.radius && player.invincibleTimer === 0) {
+                    lives--;
+                    updateHUD();
+                    screenShake = 12;
+                    player.invincibleTimer = 80;
+                    createExplosion(player.x, player.y, "#ff3366", 40);
+                    meteors.splice(i, 1);
+                }
+            planets.forEach((planet, index) => {
+                planet.angle += planet.speed * speedMultiplier;
+                let currentDist = planet.baseDist * scale;
+                planet.x = center.x + Math.cos(planet.angle) * currentDist;
+                planet.y = center.y + Math.sin(planet. angle) * currentDist;
+                if (index === targetIndex) {
+                    let dist = Math.hypot(player.x - planet.x, player.y - planet.y);
+                    if (dist < (player.radius * scale) + (planet.radius * scale) + 8) {
+                        score+= 10;
+                        createExplosion(planet.x, planet.y, planet.color, 20);
+                        screenShake = 3;
+                        if (score % 30 === 0) {
+                            round++;
+                            if (round >= 20) {
+                                gameState = "Win!";
+                            } else {
+                                speedMultiplier += 0.2;
+                                screenShake = 8;
+                            }
+                        }
+                        let nextTarget;
+                        do {nextTarget = Math.floor(Math.random()* planets.length)}
+                        while (nextTarget === targetIndex);
+                        targetIndex = nextTarget;
+                        updateHUD();
+                    }
+                }
+            });
+            for (let i = particles.length - 1; i >= 0; i--) {
+                let p = particles[i];
+                p.x += p.vx;
+                p.y += p.vy;
+                p.alpha -= p.decay;
+                if (p.alpha <= 0) particles.splice(i, 1);
+            }
+        }
+    }
+    function draw() {
+        ctx.fillStyle = "#020205";
+        ctx.fillRect(0, 0, window.innerWidth, window.innerHeight);
+        ctx.save();
+        if (screenShake > 0 && gameState === "Playing") {
+            ctx.translate((Math.random() - 0.5) * screenShake * 2, (Math.random() - 0.5) *screenShake * 2);
+        }
+        ctx.fillStyle = "#ffffff";
+        stars.forEach(star => {
+            star.y = (star.y * window.innerHeight + star.speed * (gameState === "Playing" ? 20 : 2)) % window.innerHeight / window.innerHeight;
+            ctx.globalAlpha = star.alpha;
+            ctx.fillRect(star.x * window.innerWidth, star.y * window.innerHeight, star.size, star.size);
+        });
+        ctx.globalAlpha = 1;
+        const coreRad = 45 * scale;
+        let sunGlow = ctx.createRadialGradient(center.x, center.y, coreRad * 0.1, center.x, center.y, coreRad * 2);
+        sunGlow.addColorStop(0, '#ffffff');
+        sunGlow.addColorStop(0.2, '#ffcc00');
+        sunGlow.addColorStop(0.6, 'rgba(255, 85, 0, 0.4)');
+        sunGlow.addColorStop(1,'rgba(255, 85, 0, 0)');
+
+        ctx.fillStyle = sunGlow;
+        ctx.beginPath();
+        ctx.arc(center.x, center.y, coreRad * 2, 0, Math.PI * 2);
+        ctx.fill();
+        planets.forEach((planet, index) => {
+            const isTarget = index === targetIndex;
+            const dist = planet.baseDist * scale;
+            const pRad = planet.radius * scale;
+            ctx.beginPath();
+            ctx.arc(center.x, center. y, dist, 0, Math.PI * 2);
+            ctx.strokeStyle = isTarget ? 'rgba(0, 255, 204, 0.25)' : 'rgba(255, 255, 255, 0.05)';
+            ctx.lineWidth = isTarget ? 2 : 1;
+            ctx.stroke();
+            let px = gameState === "Tutorial" ? center.x + Math.cos(planet.angle) * dist : planet.x;
+            let py = gameState === "Tutorial" ? center.y + Math.sin(planet.angle) * dist : planet.y;
+            ctx.beginPath();
+            ctx.arc(px, py, pRad, 0, Math.PI * 2);
+            ctx.fillStyle = planet.color;
+            ctx.shadowColor = planet.color;
+            ctx.shadowBlur = 10 * scale;
+            ctx.fill();
+            ctx.shadowBlur = 0;
+            
+            if (isTarget) {
+                ctx.beginPath();
+                ctx.arc(px, py, pRad + (8 * scale), 0, Math.PI *2);
+                ctx.strokeStyle = '#00ffcc';
+                ctx.lineWidth = 1.5;
+                ctx.lineWidth = 1.5;
+                ctx.setLineDash([6, 4]);
+                ctx.stroke();
+                ctx.setLineDash([]);
+            }
+        });
+        if (gameState === "Playing") {
+            meteors.forEach(m => {
+                ctx.save();
+                ctx.translate(m.x, m.y);
+                ctx.rotate(m.angle);
+                ctx.fillStyle = "#110505";
+                ctx.strokeStyle = "#ff5500";
+                ctx.lineWidth = 2 * scale;
+                ctx.shadowColor = "#ff2200";
+                ctx.shadowBlur = 8 * scale;
+
+                ctx.beginPath();
+                for(let i=0; i < m.vertices.length; i++) {
+                    let a = (i / m.vertices.length) * Math.PI * 2;
+                    let r = m.vertices[i];
+                    if (i === 0) ctx.moveTo(Math.cos(a) * r, Math.sin(a) * r);
+                    else ctx.lineTo(Math.cos(a) * r, Math.sin(a) * r);
+                }
+                ctx.closePath();
+                ctx.fill();
+                ctx.stroke();
+                ctx.restore();
+            });
+            particles.forEach(p => {
+                ctx.globalAlpha = p.alpha;
+                ctx.fillStyle = p.color;
+                ctx.beginPath();
+                ctx.arc(p.x, p.y, p.radius, 0, Math.PI * 2);
+                ctx.fill();
+            });
+            ctx.globalAlpha = 1.0;
+            if (player. invincibleTimer === 0 || Math.floor(player.invincibleTimer / 4) % 2 === 0) {
+                if (player.trail.length > 1) {
+                    ctx.beginPath();
+                    ctx.moveTo(player.trail[0].x, player.trail[0].y);
+                    for (let i = 1; i < player.trail. length; i++) {
+                    ctx.lineTo(player.trail[i].x, player. trail[i].y);
+                    ctx.strokeStyle= 'rgba(0, 255, 204, 0.4)';
+                    ctx.lineWidth = 2 * scale;
+                    } 
+                    ctx.stroke();
+                    ctx.save();
+                    ctx.translate(player.x, player.y);
+                    ctx.rotate(player.angle);
+                    ctx.scale(scale, scale);
+                    if (Object.values(keys). some(v => v) || pointer.active) {
+                        ctx.fillStyle = '#ff3366';
+                        ctx.beginPath();
+                        ctx.moveTo(-10, 0);
+                        ctx.lineTo(-20, (Math.random() - 0.5) * 8);
+                        ctx.lineTo(-10, 3);
+                        ctx.fill();
+                    }
+                    ctx.fillStyle = '#050508';
+                    ctx.strokeStyle = player.invincibleTimer > 0 ? '#ff3366' : '#00ffcc';
+                    ctx.lineWidth = 2;
+                    ctx.shadowColor = player.invincibleTimer > 0 ? '#ff3366' : '#00ffcc';
+                    ctx.shadowBlur = 10;
+                    ctx.beginPath();
+                    ctx.moveTo(12, 0);
+                    ctx.lineTo(-8, -8);
+                    ctx.lineTo(-4, 0);
+                    ctx.lineTo(-8, 8);
+                    ctx.closePath();
+                    ctx.fill();
+                    ctx.stroke();
+                    ctx.restore();
+                }
+                if(pointer.active) {
+                    ctx.beginPath();
+                    ctx.arc(pointer.x, pointer.y, 25 * scale, 0, Math.PI *2);
+                    ctx.strokeStyle = "rgba(255, 255, 255, 0.5)";
+                    ctx.stroke();
+                    ctx.beginPath();
+                    ctx.arc(pointer.x, pointer.y, 4 * scale, 0, Math.PI * 2);
+                    ctx.fillStyle = "rgba(0, 255, 204, 0.5)";
+                    ctx.fill();
+                }
+            }
+        }
+            if (gameState === "Tutorial") {
+                drawOverlayPanel("Pre-flight diagnostics", [{ label: "Controls", text: "Arrow keys / WASD or Touch & drag", color: "#00ffcc"},
+                {label: "Objective", text: "Intercept the target planets", color: "##00ffcc"},
+                {label : "Hazards", text: "Avoid meteors", color: "#ff3366"},
+                {label: "Challege", text: "Survive and reach round 20!", color: "#ffcc00"},
+                {label: "Good Luck, Pilot!", text: "May the stars guide you", color: "#ff3366"}
+                ], "Press Space or Tap to Begin");
+            } else if (gameState === "GameOver") {
+                drawOverlayPanel("Critical Failure", [{label: "Status", text: "Your ship has been destroyed", color: "#ff3366"},
+                    {label: "Final Round", text: `0${round}`, color: "#ffffff" },
+                    {label: "Final Score", text: `0${score}`, color: "#ffffff"}
+                ], "Press Space to Retry");
+            } else if (gameState === "Win!") {
+                drawOverlayPanel("Mission Complete", [{label: "Status", text: "All hazards neutralized", color: "#00ffcc"},
+                    {label: "Final Score", text: `0${score}`, color: "#ffffff"}  
+                ], "Press Space or tap to re-enter orbit");
+            }
+        
+    }
+    if (gameState === "Tutorial") {
+    function drawOverlayPanel(title, lines, prompt) {
+        ctx.fillStyle = "rgba(2, 2, 5, 0.85)";
+        ctx.fillRect(0, 0, window.innerWidth, window.innerHeight);
+        const sCenter = { x: window.innerWidth /2, y: window.innerHeight /2 };
+        const baseFontSize = Math.max(12, 16 * scale);
+        ctx.textAlign = "center";
+        ctx.font = `700 ${baseFontSize * 1.8}px 'JetBrains Mono', monospace`;
+        ctx.fillStyle = title === "Critical Failure" ? "#ff3366" : "#00ffcc";
+        ctx.fillText(title, sCenter.x, sCenter.y - (100 * scale));
+        ctx.strokeStyle = "rgba(255, 255, 255, 0.1)";
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(sCenter.x - (150 * scale), sCenter.y - (80 * scale));
+        ctx.lineTo(sCenter.x + (150 * scale), sCenter.y - (80 * scale));
+        ctx.stroke();
+        ctx.textAlign = "right";
+        ctx.font = `700 ${baseFontSize}px 'JetBrains Mono', monospace`;
+        lines.forEach((line, i) => {
+            let yOff = sCenter.y - (30 * scale) + (i * 35 * scale);
+            ctx.fillStyle = line.color;
+            ctx.fillText(line.label, sCenter.x - (10 * scale), yOff);
+            ctx.textAlign = "left";
+            ctx.fillStyle = "#f0f0f3";
+            ctx.fillText(line.text, sCenter.x + (10* scale), yOff);
+            ctx.textAlign = "right";
+        });
+        ctx.textAlign = "center";
+        ctx.font = `700 ${baseFontSize * 0.9}px 'JetBrains Mono', monospace`;
+        ctx.fillStyle = "rgba(255, 255, 255, 0.6)";
+        ctx.globalAlpha = 0.5 + Math.sin(Date.now() * 0.005) * 0.5;
+        ctx.fillText(prompt, sCenter.x, sCenter.y + (lines.length * 35 * scale) + (20 * scale));
+            ctx.globalAlpha = 1.0;
+    }
+}
+    function loop() {
+        update();
+        draw(); 
+        requestAnimationFrame(loop);
+    }
+    resize();
+    loop();
+        </script>
+    </body>
+</html>
