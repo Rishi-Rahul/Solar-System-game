@@ -298,6 +298,7 @@
                     createExplosion(player.x, player.y, "#ff3366", 40);
                     meteors.splice(i, 1);
                 }
+        }
             planets.forEach((planet, index) => {
                 planet.angle += planet.speed * speedMultiplier;
                 let currentDist = planet.baseDist * scale;
@@ -335,7 +336,6 @@
                 if (p.alpha <= 0) particles.splice(i, 1);
             }
         }
-    }
     function draw() {
         ctx.fillStyle = "#020205";
         ctx.fillRect(0, 0, window.innerWidth, window.innerHeight);
@@ -427,10 +427,11 @@
                     ctx.moveTo(player.trail[0].x, player.trail[0].y);
                     for (let i = 1; i < player.trail. length; i++) {
                     ctx.lineTo(player.trail[i].x, player. trail[i].y);
+                    }
                     ctx.strokeStyle= 'rgba(0, 255, 204, 0.4)';
                     ctx.lineWidth = 2 * scale;
                     ctx.stroke();
-                    }
+                    
                     ctx.save();
                     ctx.translate(player.x, player.y);
                     ctx.rotate(player.angle);
@@ -489,7 +490,6 @@
                 ], "Press Space or tap to re-enter orbit");
             }
     }
-    if (gameState === "Tutorial") {
     function drawOverlayPanel(title, lines, prompt) {
         ctx.fillStyle = "rgba(2, 2, 5, 0.85)";
         ctx.fillRect(0, 0, window.innerWidth, window.innerHeight);
@@ -523,7 +523,6 @@
         ctx.fillText(prompt, sCenter.x, sCenter.y + (lines.length * 35 * scale) + (20 * scale));
             ctx.globalAlpha = 1.0;
     }
-}
     function loop() {
         update();
         draw(); 
