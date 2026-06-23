@@ -22,7 +22,7 @@
             body {
                 margin: 0;
                 padding: 0;
-                background: var bghidd;
+                background: var (--bg-dark);
                 color: #f0f0f3;
                 font-family: 'JetBrains Mono', monospace;
                 width: 100vw;
@@ -319,8 +319,9 @@
                             }
                         }
                         let nextTarget;
-                        do {nextTarget = Math.floor(Math.random()* planets.length)}
-                        while (nextTarget === targetIndex);
+                        do {
+                            {nextTarget = Math.floor(Math.random()* planets.length)}
+                        } while (nextTarget === targetIndex);
                         targetIndex = nextTarget;
                         updateHUD();
                     }
@@ -384,7 +385,6 @@
                 ctx.arc(px, py, pRad + (8 * scale), 0, Math.PI *2);
                 ctx.strokeStyle = '#00ffcc';
                 ctx.lineWidth = 1.5;
-                ctx.lineWidth = 1.5;
                 ctx.setLineDash([6, 4]);
                 ctx.stroke();
                 ctx.setLineDash([]);
@@ -429,8 +429,8 @@
                     ctx.lineTo(player.trail[i].x, player. trail[i].y);
                     ctx.strokeStyle= 'rgba(0, 255, 204, 0.4)';
                     ctx.lineWidth = 2 * scale;
-                    } 
                     ctx.stroke();
+                    }
                     ctx.save();
                     ctx.translate(player.x, player.y);
                     ctx.rotate(player.angle);
@@ -470,24 +470,24 @@
                 }
             }
         }
+        ctx.restore();
             if (gameState === "Tutorial") {
                 drawOverlayPanel("Pre-flight diagnostics", [{ label: "Controls", text: "Arrow keys / WASD or Touch & drag", color: "#00ffcc"},
-                {label: "Objective", text: "Intercept the target planets", color: "##00ffcc"},
+                {label: "Objective", text: "Intercept the target planets", color: "#00ffcc"},
                 {label : "Hazards", text: "Avoid meteors", color: "#ff3366"},
                 {label: "Challege", text: "Survive and reach round 20!", color: "#ffcc00"},
                 {label: "Good Luck, Pilot!", text: "May the stars guide you", color: "#ff3366"}
                 ], "Press Space or Tap to Begin");
             } else if (gameState === "GameOver") {
                 drawOverlayPanel("Critical Failure", [{label: "Status", text: "Your ship has been destroyed", color: "#ff3366"},
-                    {label: "Final Round", text: `0${round}`, color: "#ffffff" },
-                    {label: "Final Score", text: `0${score}`, color: "#ffffff"}
+                    {label: "Final Round", text: `${round}`, color: "#ffffff" },
+                    {label: "Final Score", text: `${score}`, color: "#ffffff"}
                 ], "Press Space to Retry");
             } else if (gameState === "Win!") {
                 drawOverlayPanel("Mission Complete", [{label: "Status", text: "All hazards neutralized", color: "#00ffcc"},
-                    {label: "Final Score", text: `0${score}`, color: "#ffffff"}  
+                    {label: "Final Score", text: `${score}`, color: "#ffffff"}  
                 ], "Press Space or tap to re-enter orbit");
             }
-        
     }
     if (gameState === "Tutorial") {
     function drawOverlayPanel(title, lines, prompt) {
