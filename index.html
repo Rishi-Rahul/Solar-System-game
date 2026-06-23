@@ -154,7 +154,17 @@
             window.addEventListener("keydown", e => {keys[e.key.toLowerCase()]= true; if (e.key === " " || e.key === "Enter") handleProgression()
             });
             window.addEventListener("keyup", e => keys[e.key.toLowerCase()] = false);
-            window.addEventListener("pointerdown", e => {pointer.active = true; pointer.x = e.clientX; pointer.y = e.clientY});
+            window.addEventListener("pointerdown", e => {
+            pointer.active = true; 
+            pointer.x = e.clientX; 
+            pointer.y = e.clientY
+        
+        if (
+            gameState === "Tutorial" || gameState === "GameOver" || gameState === "Win!"
+        ) {
+            handleProgression();
+        }
+        });
             window.addEventListener("pointermove", e => {if (pointer.active) {pointer.x = e.clientX;
                 pointer.y = e.clientY;}
             });
