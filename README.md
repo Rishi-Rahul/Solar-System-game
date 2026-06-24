@@ -10,14 +10,7 @@ Live Demo: https://solar-systemgame.vercel.app/
 ### Planet Exploration
 
 * Explore all 8 planets in the Solar System.
-* Read facts and information about each planet.
-* Learn about their unique characteristics.
-
-### Quiz Mode
-
-* Test your knowledge with space-related questions.
-* Challenge yourself and improve your score.
-
+  
 ### Interactive Tutorial
 
 * Includes a tutorial to help users understand how everything works.
@@ -51,9 +44,7 @@ https://solar-systemgame.vercel.app/
 
 1. Open the website.
 
-2. Browse through the planets and read about them.
-
-3. Follow the tutorial if you're new to the website.
+2. Follow the tutorial if you're new to the website.
 
 4. Try the quiz mode and see how much you know about the Solar System.
 
